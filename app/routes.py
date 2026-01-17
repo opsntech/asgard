@@ -709,13 +709,13 @@ def vpn_connect():
         vpn_server = VPNServer(hostname=data['hostname'])
         db.session.add(vpn_server)
 
-        # Auto-assign environment if specified
-        if data.get('environment'):
-            env = Environment.query.filter_by(name=data['environment']).first()
-            if not env:
-                env = Environment(name=data['environment'])
-                db.session.add(env)
-            vpn_server.environment = env
+    # Update environment if specified (for new or existing servers without environment)
+    if data.get('environment') and not vpn_server.environment:
+        env = Environment.query.filter_by(name=data['environment']).first()
+        if not env:
+            env = Environment(name=data['environment'])
+            db.session.add(env)
+        vpn_server.environment = env
 
     vpn_server.last_seen = datetime.utcnow()
 
