@@ -138,6 +138,10 @@ def send_slack_notification(event_type, session_data, server, environment):
 @main_bp.route('/login', methods=['GET', 'POST'])
 def login():
     """Login page for dashboard"""
+    # Redirect to setup if no users exist
+    if User.query.count() == 0:
+        return redirect(url_for('main.setup'))
+
     if session.get('user_id'):
         return redirect(url_for('main.dashboard'))
 
