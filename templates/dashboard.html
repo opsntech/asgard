@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - SSH Session Monitor{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h2><i class="bi bi-speedometer2"></i> Dashboard</h2>
+    </div>
+</div>
+
+<!-- Stats Cards -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card stat-card bg-success text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-subtitle mb-2">Active Sessions</h6>
+                        <h2 class="card-title mb-0" id="stat-active">--</h2>
+                    </div>
+                    <i class="bi bi-person-check display-4 opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card bg-primary text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-subtitle mb-2">Today's Logins</h6>
+                        <h2 class="card-title mb-0" id="stat-today">--</h2>
+                    </div>
+                    <i class="bi bi-calendar-check display-4 opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card bg-info text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-subtitle mb-2">Online Servers</h6>
+                        <h2 class="card-title mb-0">
+                            <span id="stat-online">--</span>/<span id="stat-total">--</span>
+                        </h2>
+                    </div>
+                    <i class="bi bi-hdd-rack display-4 opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card bg-secondary text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-subtitle mb-2">Environments</h6>
+                        <h2 class="card-title mb-0" id="stat-envs">--</h2>
+                    </div>
+                    <i class="bi bi-diagram-3 display-4 opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Active Sessions by Environment -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-diagram-3"></i> Sessions by Environment
+            </div>
+            <div class="card-body">
+                <div id="env-breakdown">
+                    <p class="text-muted">Loading...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-clock-history"></i> Recent Activity
+            </div>
+            <div class="card-body" style="max-height: 300px; overflow-y: auto;">
+                <div id="recent-activity">
+                    <p class="text-muted">Loading...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Active Sessions Table -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-person-lines-fill"></i> Active Sessions</span>
+                <span class="badge bg-success" id="active-count">0</span>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover" id="active-sessions-table">
+                        <thead>
+                            <tr>
+                                <th>Environment</th>
+                                <th>Server</th>
+                                <th>User</th>
+                                <th>Source IP</th>
+                                <th>TTY</th>
+                                <th>Login Time</th>
+                                <th>Duration</th>
+                            </tr>
+                        </thead>
+                        <tbody id="active-sessions">
+                            <tr><td colspan="7" class="text-center text-muted">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    loadDashboard();
+    setInterval(loadDashboard, 10000); // Refresh every 10 seconds
+});
+
+async function loadDashboard() {
+    try {
+        // Load stats
+        const stats = await fetch('/api/v1/stats').then(r => r.json());
+        document.getElementById('stat-active').textContent = stats.active_sessions;
+        document.getElementById('stat-today').textContent = stats.today_logins;
+        document.getElementById('stat-online').textContent = stats.online_servers;
+        document.getElementById('stat-total').textContent = stats.total_servers;
+        document.getElementById('stat-envs').textContent = Object.keys(stats.by_environment).length;
+
+        // Environment breakdown
+        const envDiv = document.getElementById('env-breakdown');
+        if (Object.keys(stats.by_environment).length > 0) {
+            envDiv.innerHTML = Object.entries(stats.by_environment)
+                .map(([env, count]) => `
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span><i class="bi bi-circle-fill text-success"></i> ${env}</span>
+                        <span class="badge bg-primary">${count} active</span>
+                    </div>
+                `).join('');
+        } else {
+            envDiv.innerHTML = '<p class="text-muted mb-0">No active sessions</p>';
+        }
+
+        // Load active sessions
+        const sessions = await fetch('/api/v1/sessions/active').then(r => r.json());
+        document.getElementById('active-count').textContent = sessions.length;
+
+        const tbody = document.getElementById('active-sessions');
+        if (sessions.length > 0) {
+            tbody.innerHTML = sessions.map(s => `
+                <tr>
+                    <td><span class="badge bg-secondary">${s.environment || 'Unknown'}</span></td>
+                    <td>${s.server}</td>
+                    <td><strong>${s.username}</strong></td>
+                    <td><code>${s.source_ip}</code></td>
+                    <td>${s.tty}</td>
+                    <td>${formatDate(s.login_time)}</td>
+                    <td>${getDuration(s.login_time)}</td>
+                </tr>
+            `).join('');
+        } else {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No active sessions</td></tr>';
+        }
+
+        // Load recent activity
+        const recent = await fetch('/api/v1/sessions?limit=10').then(r => r.json());
+        const activityDiv = document.getElementById('recent-activity');
+        if (recent.sessions.length > 0) {
+            activityDiv.innerHTML = recent.sessions.map(s => `
+                <div class="d-flex align-items-center mb-2">
+                    <span class="badge ${s.is_active ? 'bg-success' : 'bg-secondary'} me-2">
+                        ${s.is_active ? 'LOGIN' : 'LOGOUT'}
+                    </span>
+                    <small>
+                        <strong>${s.username}</strong>@${s.server}
+                        <span class="text-muted">${formatDate(s.is_active ? s.login_time : s.logout_time)}</span>
+                    </small>
+                </div>
+            `).join('');
+        } else {
+            activityDiv.innerHTML = '<p class="text-muted mb-0">No recent activity</p>';
+        }
+
+        // Update timestamp
+        document.querySelector('#last-updated span').textContent = new Date().toLocaleTimeString();
+    } catch (err) {
+        console.error('Failed to load dashboard:', err);
+    }
+}
+</script>
+{% endblock %}

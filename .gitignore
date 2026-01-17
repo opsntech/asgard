@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+
+# Environment
+.env
+*.env.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Docker
+*.log
+
+# Database
+*.db
+*.sqlite3
+
+# Certificates
+certs/
+*.pem
+*.key
+*.crt
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Flask
+instance/
+.webassets-cache
+
+# Migrations
+migrations/
+
+# Data
+data/
+*.sql
+*.dump
+*.backup
+
+# Local config
+config.local.*
+*.local.yml
+
+# Secrets
+secrets/
+*.secret

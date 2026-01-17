@@ -1,0 +1,77 @@
+/* SSH Session Monitor - Custom Styles */
+
+body {
+    background-color: #f5f5f5;
+}
+
+.stat-card {
+    border: none;
+    border-radius: 10px;
+    transition: transform 0.2s;
+}
+
+.stat-card:hover {
+    transform: translateY(-2px);
+}
+
+.card {
+    border: none;
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    border-radius: 10px;
+}
+
+.card-header {
+    background-color: #fff;
+    border-bottom: 1px solid #eee;
+    font-weight: 600;
+}
+
+.table th {
+    font-weight: 600;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.badge {
+    font-weight: 500;
+}
+
+code {
+    background-color: #f8f9fa;
+    padding: 0.2em 0.4em;
+    border-radius: 3px;
+    color: #e83e8c;
+}
+
+.navbar-brand {
+    font-weight: 700;
+}
+
+#last-updated {
+    font-size: 0.85rem;
+}
+
+/* Responsive table */
+@media (max-width: 768px) {
+    .table-responsive {
+        font-size: 0.85rem;
+    }
+}
+
+/* Pulse animation for active sessions */
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+.badge.bg-success {
+    animation: pulse 2s infinite;
+}
+
+/* Filter form styling */
+#filter-form .form-label {
+    font-weight: 600;
+    font-size: 0.85rem;
+}

@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block title %}Servers - SSH Session Monitor{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h2><i class="bi bi-hdd-rack"></i> Servers</h2>
+    </div>
+</div>
+
+<!-- Servers Table -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-hdd-rack"></i> Monitored Servers</span>
+                <span class="text-muted" id="server-count">Loading...</span>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Status</th>
+                                <th>Hostname</th>
+                                <th>IP Address</th>
+                                <th>Environment</th>
+                                <th>Active Sessions</th>
+                                <th>Last Seen</th>
+                            </tr>
+                        </thead>
+                        <tbody id="servers-tbody">
+                            <tr><td colspan="6" class="text-center">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Environments Section -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-diagram-3"></i> Environments
+            </div>
+            <div class="card-body">
+                <div class="row" id="environments-list">
+                    <p class="text-muted">Loading...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    loadServers();
+    loadEnvironments();
+    setInterval(loadServers, 30000);
+});
+
+async function loadServers() {
+    const servers = await fetch('/api/v1/servers').then(r => r.json());
+    document.getElementById('server-count').textContent = `${servers.length} servers`;
+
+    const tbody = document.getElementById('servers-tbody');
+    const now = new Date();
+
+    if (servers.length > 0) {
+        tbody.innerHTML = servers.map(s => {
+            const lastSeen = s.last_seen ? new Date(s.last_seen) : null;
+            const isOnline = lastSeen && (now - lastSeen) < 300000; // 5 minutes
+
+            return `
+                <tr>
+                    <td>
+                        ${isOnline
+                            ? '<span class="badge bg-success"><i class="bi bi-circle-fill"></i> Online</span>'
+                            : '<span class="badge bg-danger"><i class="bi bi-circle-fill"></i> Offline</span>'}
+                    </td>
+                    <td><strong>${s.hostname}</strong></td>
+                    <td><code>${s.ip_address || '-'}</code></td>
+                    <td><span class="badge bg-info">${s.environment || 'Unassigned'}</span></td>
+                    <td>
+                        ${s.active_sessions > 0
+                            ? `<span class="badge bg-warning text-dark">${s.active_sessions}</span>`
+                            : '<span class="text-muted">0</span>'}
+                    </td>
+                    <td>${s.last_seen ? formatDate(s.last_seen) : 'Never'}</td>
+                </tr>
+            `;
+        }).join('');
+    } else {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No servers registered yet</td></tr>';
+    }
+}
+
+async function loadEnvironments() {
+    const envs = await fetch('/api/v1/environments').then(r => r.json());
+    const container = document.getElementById('environments-list');
+
+    if (envs.length > 0) {
+        container.innerHTML = envs.map(env => `
+            <div class="col-md-4 mb-3">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">${env.name}</h5>
+                        <p class="card-text text-muted">${env.description || 'No description'}</p>
+                        <span class="badge bg-primary">${env.server_count} servers</span>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+    } else {
+        container.innerHTML = '<p class="text-muted col-12">No environments configured. Environments are created automatically when agents report in.</p>';
+    }
+}
+</script>
+{% endblock %}

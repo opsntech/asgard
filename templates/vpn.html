@@ -1,0 +1,366 @@
+{% extends "base.html" %}
+
+{% block title %}VPN Monitor - SSH Session Monitor{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h2><i class="bi bi-shield-lock"></i> VPN Monitoring</h2>
+    </div>
+</div>
+
+<!-- Stats Cards -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card stat-card bg-success text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-subtitle mb-2">Active Connections</h6>
+                        <h2 class="card-title mb-0" id="stat-active">--</h2>
+                    </div>
+                    <i class="bi bi-link-45deg display-4 opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card bg-danger text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-subtitle mb-2">Monitored Users Active</h6>
+                        <h2 class="card-title mb-0" id="stat-monitored">--</h2>
+                    </div>
+                    <i class="bi bi-eye display-4 opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card bg-primary text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-subtitle mb-2">Today's Connections</h6>
+                        <h2 class="card-title mb-0" id="stat-today">--</h2>
+                    </div>
+                    <i class="bi bi-calendar-check display-4 opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card bg-info text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-subtitle mb-2">Data Sent Today</h6>
+                        <h2 class="card-title mb-0" id="stat-data">--</h2>
+                    </div>
+                    <i class="bi bi-cloud-upload display-4 opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <!-- Active Connections -->
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-link-45deg"></i> Active VPN Connections</span>
+                <span class="badge bg-success" id="active-count">0</span>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>User</th>
+                                <th>Source IP</th>
+                                <th>VPN IP</th>
+                                <th>Server</th>
+                                <th>Connected</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="active-connections">
+                            <tr><td colspan="6" class="text-center text-muted">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Monitored Users -->
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-eye"></i> Monitored Users</span>
+                <button class="btn btn-sm btn-danger" data-bs-toggle="modal" data-bs-target="#addMonitoredModal">
+                    <i class="bi bi-plus-circle"></i> Add
+                </button>
+            </div>
+            <div class="card-body" style="max-height: 400px; overflow-y: auto;">
+                <div id="monitored-users-list">
+                    <p class="text-muted">Loading...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent VPN Sessions -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-clock-history"></i> Recent VPN Sessions</span>
+                <div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="filter-monitored">
+                        <label class="form-check-label" for="filter-monitored">Monitored Only</label>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover table-striped">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Status</th>
+                                <th>User</th>
+                                <th>Source IP</th>
+                                <th>VPN IP</th>
+                                <th>Server</th>
+                                <th>Connected</th>
+                                <th>Duration</th>
+                                <th>Data Sent</th>
+                                <th>Data Received</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sessions-tbody">
+                            <tr><td colspan="9" class="text-center">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Monitored User Modal -->
+<div class="modal fade" id="addMonitoredModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title"><i class="bi bi-eye"></i> Add Monitored User</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="add-monitored-form">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Username</label>
+                        <input type="text" class="form-control" id="monitor-username" required
+                               placeholder="e.g., john_prod">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Reason</label>
+                        <input type="text" class="form-control" id="monitor-reason"
+                               placeholder="e.g., Departing employee">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-danger">
+                        <i class="bi bi-eye"></i> Add to Watch List
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    loadVPNData();
+    setInterval(loadVPNData, 10000);
+
+    document.getElementById('add-monitored-form').addEventListener('submit', addMonitoredUser);
+    document.getElementById('filter-monitored').addEventListener('change', loadSessions);
+});
+
+async function loadVPNData() {
+    try {
+        // Load stats
+        const stats = await fetch('/api/v1/vpn/stats').then(r => r.json());
+        document.getElementById('stat-active').textContent = stats.active_connections;
+        document.getElementById('stat-monitored').textContent = stats.monitored_active;
+        document.getElementById('stat-today').textContent = stats.today_connections;
+        document.getElementById('stat-data').textContent = formatBytes(stats.today_bytes_sent);
+
+        // Load active connections
+        const active = await fetch('/api/v1/vpn/sessions/active').then(r => r.json());
+        document.getElementById('active-count').textContent = active.length;
+
+        const tbody = document.getElementById('active-connections');
+        if (active.length > 0) {
+            tbody.innerHTML = active.map(s => `
+                <tr class="${s.is_monitored_user ? 'table-danger' : ''}">
+                    <td>
+                        <strong>${s.username}</strong>
+                        ${s.is_monitored_user ? '<span class="badge bg-danger ms-1">MONITORED</span>' : ''}
+                    </td>
+                    <td><code>${s.source_ip}</code></td>
+                    <td><code>${s.vpn_ip || '-'}</code></td>
+                    <td>${s.vpn_server}</td>
+                    <td>${formatDate(s.connect_time)}</td>
+                    <td><span class="badge bg-success">Connected</span></td>
+                </tr>
+            `).join('');
+        } else {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No active connections</td></tr>';
+        }
+
+        // Load monitored users
+        loadMonitoredUsers();
+
+        // Load sessions
+        loadSessions();
+
+        // Update timestamp
+        document.querySelector('#last-updated span').textContent = new Date().toLocaleTimeString();
+    } catch (err) {
+        console.error('Failed to load VPN data:', err);
+    }
+}
+
+async function loadMonitoredUsers() {
+    const users = await fetch('/api/v1/vpn/monitored-users').then(r => r.json());
+    const container = document.getElementById('monitored-users-list');
+
+    if (users.length > 0) {
+        container.innerHTML = users.map(u => `
+            <div class="d-flex justify-content-between align-items-center mb-2 p-2 bg-light rounded">
+                <div>
+                    <strong>${u.username}</strong>
+                    <br><small class="text-muted">${u.reason || 'No reason specified'}</small>
+                </div>
+                <button class="btn btn-sm btn-outline-danger" onclick="removeMonitoredUser(${u.id})">
+                    <i class="bi bi-x"></i>
+                </button>
+            </div>
+        `).join('');
+    } else {
+        container.innerHTML = '<p class="text-muted mb-0">No monitored users configured</p>';
+    }
+}
+
+async function loadSessions() {
+    const monitoredOnly = document.getElementById('filter-monitored').checked;
+    const params = new URLSearchParams({ limit: 50 });
+    if (monitoredOnly) params.append('monitored', 'true');
+
+    const data = await fetch(`/api/v1/vpn/sessions?${params}`).then(r => r.json());
+    const tbody = document.getElementById('sessions-tbody');
+
+    if (data.sessions.length > 0) {
+        tbody.innerHTML = data.sessions.map(s => `
+            <tr class="${s.is_monitored_user ? 'table-warning' : ''}">
+                <td>
+                    ${s.is_active
+                        ? '<span class="badge bg-success">Active</span>'
+                        : '<span class="badge bg-secondary">Ended</span>'}
+                    ${s.is_monitored_user ? '<span class="badge bg-danger ms-1">MONITORED</span>' : ''}
+                </td>
+                <td><strong>${s.username}</strong></td>
+                <td><code>${s.source_ip}</code></td>
+                <td><code>${s.vpn_ip || '-'}</code></td>
+                <td>${s.vpn_server}</td>
+                <td>${formatDate(s.connect_time)}</td>
+                <td>${s.duration_formatted || '-'}</td>
+                <td>${s.bytes_sent_formatted}</td>
+                <td>${s.bytes_received_formatted}</td>
+            </tr>
+        `).join('');
+    } else {
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">No sessions found</td></tr>';
+    }
+}
+
+async function addMonitoredUser(e) {
+    e.preventDefault();
+
+    const response = await fetch('/api/v1/vpn/monitored-users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            username: document.getElementById('monitor-username').value,
+            reason: document.getElementById('monitor-reason').value
+        })
+    });
+
+    if (response.ok) {
+        bootstrap.Modal.getInstance(document.getElementById('addMonitoredModal')).hide();
+        document.getElementById('add-monitored-form').reset();
+        loadMonitoredUsers();
+        showToast('User added to watch list', 'success');
+    } else {
+        showToast('Failed to add user', 'danger');
+    }
+}
+
+async function removeMonitoredUser(id) {
+    if (!confirm('Remove this user from the watch list?')) return;
+
+    const response = await fetch(`/api/v1/vpn/monitored-users/${id}`, {
+        method: 'DELETE'
+    });
+
+    if (response.ok) {
+        loadMonitoredUsers();
+        showToast('User removed from watch list', 'success');
+    }
+}
+
+function formatBytes(bytes) {
+    if (!bytes || bytes === 0) return '0 B';
+    if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(2) + ' GB';
+    if (bytes >= 1048576) return (bytes / 1048576).toFixed(2) + ' MB';
+    if (bytes >= 1024) return (bytes / 1024).toFixed(2) + ' KB';
+    return bytes + ' B';
+}
+
+function showToast(message, type = 'info') {
+    let container = document.getElementById('toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        container.className = 'toast-container position-fixed bottom-0 end-0 p-3';
+        container.style.zIndex = '9999';
+        document.body.appendChild(container);
+    }
+
+    const toast = document.createElement('div');
+    toast.className = `toast align-items-center text-white bg-${type} border-0`;
+    toast.setAttribute('role', 'alert');
+    toast.innerHTML = `
+        <div class="d-flex">
+            <div class="toast-body">${message}</div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        </div>
+    `;
+
+    container.appendChild(toast);
+    const bsToast = new bootstrap.Toast(toast, { delay: 4000 });
+    bsToast.show();
+
+    toast.addEventListener('hidden.bs.toast', () => toast.remove());
+}
+</script>
+{% endblock %}
