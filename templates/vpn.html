@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}VPN Monitor - SSH Session Monitor{% endblock %}
+{% block title %}VPN Monitor - Asgard{% endblock %}
 
 {% block content %}
 <div class="row mb-4">
@@ -82,12 +82,13 @@
                                 <th>Source IP</th>
                                 <th>VPN IP</th>
                                 <th>Server</th>
+                                <th>Environment</th>
                                 <th>Connected</th>
                                 <th>Status</th>
                             </tr>
                         </thead>
                         <tbody id="active-connections">
-                            <tr><td colspan="6" class="text-center text-muted">Loading...</td></tr>
+                            <tr><td colspan="7" class="text-center text-muted">Loading...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -119,8 +120,11 @@
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <span><i class="bi bi-clock-history"></i> Recent VPN Sessions</span>
-                <div>
-                    <div class="form-check form-check-inline">
+                <div class="d-flex align-items-center gap-3">
+                    <select class="form-select form-select-sm" id="filter-environment" style="width: auto;">
+                        <option value="">All Environments</option>
+                    </select>
+                    <div class="form-check form-check-inline mb-0">
                         <input class="form-check-input" type="checkbox" id="filter-monitored">
                         <label class="form-check-label" for="filter-monitored">Monitored Only</label>
                     </div>
@@ -136,6 +140,7 @@
                                 <th>Source IP</th>
                                 <th>VPN IP</th>
                                 <th>Server</th>
+                                <th>Environment</th>
                                 <th>Connected</th>
                                 <th>Duration</th>
                                 <th>Data Sent</th>
@@ -143,7 +148,7 @@
                             </tr>
                         </thead>
                         <tbody id="sessions-tbody">
-                            <tr><td colspan="9" class="text-center">Loading...</td></tr>
+                            <tr><td colspan="10" class="text-center">Loading...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -188,12 +193,29 @@
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    loadEnvironments();
     loadVPNData();
     setInterval(loadVPNData, 10000);
 
     document.getElementById('add-monitored-form').addEventListener('submit', addMonitoredUser);
     document.getElementById('filter-monitored').addEventListener('change', loadSessions);
+    document.getElementById('filter-environment').addEventListener('change', loadSessions);
 });
+
+async function loadEnvironments() {
+    try {
+        const envs = await fetch('/api/v1/environments').then(r => r.json());
+        const select = document.getElementById('filter-environment');
+        envs.forEach(env => {
+            const option = document.createElement('option');
+            option.value = env.name;
+            option.textContent = env.name;
+            select.appendChild(option);
+        });
+    } catch (err) {
+        console.error('Failed to load environments:', err);
+    }
+}
 
 async function loadVPNData() {
     try {
@@ -219,12 +241,13 @@ async function loadVPNData() {
                     <td><code>${s.source_ip}</code></td>
                     <td><code>${s.vpn_ip || '-'}</code></td>
                     <td>${s.vpn_server}</td>
+                    <td>${s.environment ? `<span class="badge bg-secondary">${s.environment}</span>` : '-'}</td>
                     <td>${formatDate(s.connect_time)}</td>
                     <td><span class="badge bg-success">Connected</span></td>
                 </tr>
             `).join('');
         } else {
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No active connections</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No active connections</td></tr>';
         }
 
         // Load monitored users
@@ -269,8 +292,15 @@ async function loadSessions() {
     const data = await fetch(`/api/v1/vpn/sessions?${params}`).then(r => r.json());
     const tbody = document.getElementById('sessions-tbody');
 
-    if (data.sessions.length > 0) {
-        tbody.innerHTML = data.sessions.map(s => `
+    // Filter by environment client-side if needed
+    const envFilter = document.getElementById('filter-environment').value;
+    let sessions = data.sessions;
+    if (envFilter) {
+        sessions = sessions.filter(s => s.environment === envFilter);
+    }
+
+    if (sessions.length > 0) {
+        tbody.innerHTML = sessions.map(s => `
             <tr class="${s.is_monitored_user ? 'table-warning' : ''}">
                 <td>
                     ${s.is_active
@@ -282,6 +312,7 @@ async function loadSessions() {
                 <td><code>${s.source_ip}</code></td>
                 <td><code>${s.vpn_ip || '-'}</code></td>
                 <td>${s.vpn_server}</td>
+                <td>${s.environment ? `<span class="badge bg-secondary">${s.environment}</span>` : '-'}</td>
                 <td>${formatDate(s.connect_time)}</td>
                 <td>${s.duration_formatted || '-'}</td>
                 <td>${s.bytes_sent_formatted}</td>
@@ -289,7 +320,7 @@ async function loadSessions() {
             </tr>
         `).join('');
     } else {
-        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">No sessions found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted">No sessions found</td></tr>';
     }
 }
 

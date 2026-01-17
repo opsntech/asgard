@@ -1,5 +1,40 @@
 from datetime import datetime
+from werkzeug.security import generate_password_hash, check_password_hash
 from app import db
+
+
+class User(db.Model):
+    """Application users with role-based access"""
+    __tablename__ = 'users'
+
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    password_hash = db.Column(db.String(256), nullable=False)
+    role = db.Column(db.String(20), default='user')  # 'admin' or 'user'
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    last_login = db.Column(db.DateTime)
+
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
+    def is_admin(self):
+        return self.role == 'admin'
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'username': self.username,
+            'email': self.email,
+            'role': self.role,
+            'is_active': self.is_active,
+            'created_at': self.created_at.isoformat(),
+            'last_login': self.last_login.isoformat() if self.last_login else None
+        }
 
 
 class Settings(db.Model):
@@ -153,9 +188,11 @@ class VPNServer(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     hostname = db.Column(db.String(255), unique=True, nullable=False)
     description = db.Column(db.String(200))
+    environment_id = db.Column(db.Integer, db.ForeignKey('environments.id'))
     last_seen = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+    environment = db.relationship('Environment', backref='vpn_servers')
     sessions = db.relationship('VPNSession', backref='vpn_server', lazy='dynamic')
 
     def to_dict(self):
@@ -163,6 +200,8 @@ class VPNServer(db.Model):
             'id': self.id,
             'hostname': self.hostname,
             'description': self.description,
+            'environment': self.environment.name if self.environment else None,
+            'environment_id': self.environment_id,
             'last_seen': self.last_seen.isoformat() if self.last_seen else None,
             'active_connections': self.sessions.filter_by(disconnect_time=None).count()
         }
@@ -194,6 +233,7 @@ class VPNSession(db.Model):
         return {
             'id': self.id,
             'vpn_server': self.vpn_server.hostname,
+            'environment': self.vpn_server.environment.name if self.vpn_server.environment else None,
             'username': self.username,
             'source_ip': self.source_ip,
             'vpn_ip': self.vpn_ip,

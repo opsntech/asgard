@@ -8,7 +8,7 @@ import re
 from app import db
 from app.models import (
     Environment, Server, Session, AuditLog, Settings,
-    MonitoredUser, VPNServer, VPNSession
+    MonitoredUser, VPNServer, VPNSession, User
 )
 
 main_bp = Blueprint('main', __name__)
@@ -34,15 +34,30 @@ def require_dashboard_auth(f):
     """Decorator to require authentication for dashboard pages"""
     @wraps(f)
     def decorated(*args, **kwargs):
-        # Check if dashboard auth is enabled
-        dashboard_password = current_app.config.get('DASHBOARD_PASSWORD')
-        if not dashboard_password:
-            return f(*args, **kwargs)
-
-        if not session.get('authenticated'):
+        if not session.get('user_id'):
             return redirect(url_for('main.login'))
         return f(*args, **kwargs)
     return decorated
+
+
+def require_admin(f):
+    """Decorator to require admin role"""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get('user_id'):
+            return redirect(url_for('main.login'))
+        user = User.query.get(session['user_id'])
+        if not user or not user.is_admin():
+            return jsonify({'error': 'Admin access required'}), 403
+        return f(*args, **kwargs)
+    return decorated
+
+
+def get_current_user():
+    """Get the currently logged in user"""
+    if session.get('user_id'):
+        return User.query.get(session['user_id'])
+    return None
 
 
 def get_int_param(name, default, min_val=0, max_val=10000):
@@ -123,14 +138,22 @@ def send_slack_notification(event_type, session_data, server, environment):
 @main_bp.route('/login', methods=['GET', 'POST'])
 def login():
     """Login page for dashboard"""
-    if request.method == 'POST':
-        password = request.form.get('password', '')
-        dashboard_password = current_app.config.get('DASHBOARD_PASSWORD', '')
+    if session.get('user_id'):
+        return redirect(url_for('main.dashboard'))
 
-        if dashboard_password and secrets.compare_digest(password, dashboard_password):
-            session['authenticated'] = True
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
+
+        user = User.query.filter_by(username=username, is_active=True).first()
+        if user and user.check_password(password):
+            session['user_id'] = user.id
+            session['username'] = user.username
+            session['role'] = user.role
+            user.last_login = datetime.utcnow()
+            db.session.commit()
             return redirect(url_for('main.dashboard'))
-        return render_template('login.html', error='Invalid password')
+        return render_template('login.html', error='Invalid username or password')
 
     return render_template('login.html')
 
@@ -138,7 +161,7 @@ def login():
 @main_bp.route('/logout')
 def logout():
     """Logout from dashboard"""
-    session.pop('authenticated', None)
+    session.clear()
     return redirect(url_for('main.login'))
 
 
@@ -682,6 +705,14 @@ def vpn_connect():
         vpn_server = VPNServer(hostname=data['hostname'])
         db.session.add(vpn_server)
 
+        # Auto-assign environment if specified
+        if data.get('environment'):
+            env = Environment.query.filter_by(name=data['environment']).first()
+            if not env:
+                env = Environment(name=data['environment'])
+                db.session.add(env)
+            vpn_server.environment = env
+
     vpn_server.last_seen = datetime.utcnow()
 
     # Check if user is monitored
@@ -793,3 +824,157 @@ def vpn_disconnect():
     db.session.commit()
 
     return jsonify({'status': 'ok'}), 200
+
+
+# =============================================================================
+# API Routes - User Management
+# =============================================================================
+
+@main_bp.route('/users')
+@require_dashboard_auth
+def users_view():
+    """Users management view (admin only)"""
+    user = get_current_user()
+    if not user or not user.is_admin():
+        return redirect(url_for('main.dashboard'))
+    return render_template('users.html')
+
+
+@main_bp.route('/setup', methods=['GET', 'POST'])
+def setup():
+    """Initial setup - create admin user if none exists"""
+    # Check if any users exist
+    if User.query.count() > 0:
+        return redirect(url_for('main.login'))
+
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        email = request.form.get('email', '').strip()
+        password = request.form.get('password', '')
+        confirm_password = request.form.get('confirm_password', '')
+
+        errors = []
+        if not username or len(username) < 3:
+            errors.append('Username must be at least 3 characters')
+        if not email or '@' not in email:
+            errors.append('Valid email is required')
+        if not password or len(password) < 8:
+            errors.append('Password must be at least 8 characters')
+        if password != confirm_password:
+            errors.append('Passwords do not match')
+
+        if errors:
+            return render_template('setup.html', errors=errors)
+
+        admin = User(
+            username=username,
+            email=email,
+            role='admin'
+        )
+        admin.set_password(password)
+        db.session.add(admin)
+        db.session.commit()
+
+        session['user_id'] = admin.id
+        session['username'] = admin.username
+        session['role'] = admin.role
+        return redirect(url_for('main.dashboard'))
+
+    return render_template('setup.html')
+
+
+@api_bp.route('/users')
+@require_admin
+def list_users():
+    """List all users (admin only)"""
+    users = User.query.order_by(User.username).all()
+    return jsonify([u.to_dict() for u in users])
+
+
+@api_bp.route('/users', methods=['POST'])
+@require_admin
+def create_user():
+    """Create a new user (admin only)"""
+    data = request.get_json()
+
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+
+    username = sanitize_string(data.get('username', '').strip(), 80)
+    email = sanitize_string(data.get('email', '').strip(), 120)
+    password = data.get('password', '')
+    role = data.get('role', 'user')
+
+    if not username or len(username) < 3:
+        return jsonify({'error': 'Username must be at least 3 characters'}), 400
+    if not email or '@' not in email:
+        return jsonify({'error': 'Valid email is required'}), 400
+    if not password or len(password) < 8:
+        return jsonify({'error': 'Password must be at least 8 characters'}), 400
+    if role not in ['admin', 'user']:
+        return jsonify({'error': 'Role must be admin or user'}), 400
+
+    if User.query.filter_by(username=username).first():
+        return jsonify({'error': 'Username already exists'}), 400
+    if User.query.filter_by(email=email).first():
+        return jsonify({'error': 'Email already exists'}), 400
+
+    user = User(username=username, email=email, role=role)
+    user.set_password(password)
+    db.session.add(user)
+    db.session.commit()
+
+    return jsonify(user.to_dict()), 201
+
+
+@api_bp.route('/users/<int:user_id>', methods=['PUT'])
+@require_admin
+def update_user(user_id):
+    """Update a user (admin only)"""
+    user = User.query.get_or_404(user_id)
+    data = request.get_json()
+
+    if 'email' in data:
+        email = sanitize_string(data['email'].strip(), 120)
+        existing = User.query.filter(User.email == email, User.id != user_id).first()
+        if existing:
+            return jsonify({'error': 'Email already exists'}), 400
+        user.email = email
+
+    if 'role' in data and data['role'] in ['admin', 'user']:
+        user.role = data['role']
+
+    if 'is_active' in data:
+        user.is_active = bool(data['is_active'])
+
+    if 'password' in data and data['password']:
+        if len(data['password']) < 8:
+            return jsonify({'error': 'Password must be at least 8 characters'}), 400
+        user.set_password(data['password'])
+
+    db.session.commit()
+    return jsonify(user.to_dict())
+
+
+@api_bp.route('/users/<int:user_id>', methods=['DELETE'])
+@require_admin
+def delete_user(user_id):
+    """Delete a user (admin only)"""
+    current_user = get_current_user()
+    if current_user and current_user.id == user_id:
+        return jsonify({'error': 'Cannot delete your own account'}), 400
+
+    user = User.query.get_or_404(user_id)
+    db.session.delete(user)
+    db.session.commit()
+    return jsonify({'status': 'deleted'})
+
+
+@api_bp.route('/me')
+@require_dashboard_auth
+def get_current_user_info():
+    """Get current user info"""
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Not authenticated'}), 401
+    return jsonify(user.to_dict())
