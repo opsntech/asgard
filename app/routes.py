@@ -8,7 +8,8 @@ import re
 from app import db
 from app.models import (
     Environment, Server, Session, AuditLog, Settings,
-    MonitoredUser, VPNServer, VPNSession, User
+    MonitoredUser, VPNServer, VPNSession, User,
+    SiriusIncident, SiriusAlert, SiriusAction, SiriusInvestigationStep
 )
 
 main_bp = Blueprint('main', __name__)
@@ -202,6 +203,13 @@ def alerts_view():
 def vpn_view():
     """VPN monitoring view"""
     return render_template('vpn.html')
+
+
+@main_bp.route('/sirius')
+@require_dashboard_auth
+def sirius_view():
+    """Sirius AI DevOps Agent incidents view"""
+    return render_template('sirius.html')
 
 
 # =============================================================================
@@ -982,3 +990,402 @@ def get_current_user_info():
     if not user:
         return jsonify({'error': 'Not authenticated'}), 401
     return jsonify(user.to_dict())
+
+
+# =============================================================================
+# API Routes - Sirius AI DevOps Agent
+# =============================================================================
+
+@api_bp.route('/sirius/webhook/incident', methods=['POST'])
+@require_api_key
+def sirius_webhook_incident():
+    """Receive incident from Sirius agent"""
+    data = request.get_json()
+
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+
+    required_fields = ['incident_id', 'title', 'severity', 'status', 'detected_at']
+    for field in required_fields:
+        if field not in data:
+            return jsonify({'error': f'Missing field: {field}'}), 400
+
+    # Check if incident already exists
+    incident = SiriusIncident.query.get(data['incident_id'])
+
+    if incident:
+        # Update existing incident
+        incident.title = data['title']
+        incident.severity = data['severity']
+        incident.status = data['status']
+        incident.root_cause = data.get('root_cause')
+        incident.root_cause_confidence = data.get('root_cause_confidence')
+        incident.affected_servers = data.get('affected_servers', [])
+        incident.affected_services = data.get('affected_services', [])
+        incident.analyzed_at = parse_timestamp(data.get('analyzed_at')) if data.get('analyzed_at') else None
+        incident.resolved_at = parse_timestamp(data.get('resolved_at')) if data.get('resolved_at') else None
+    else:
+        # Create new incident
+        incident = SiriusIncident(
+            id=data['incident_id'],
+            title=data['title'],
+            severity=data['severity'],
+            status=data['status'],
+            root_cause=data.get('root_cause'),
+            root_cause_confidence=data.get('root_cause_confidence'),
+            affected_servers=data.get('affected_servers', []),
+            affected_services=data.get('affected_services', []),
+            detected_at=parse_timestamp(data['detected_at']),
+            analyzed_at=parse_timestamp(data.get('analyzed_at')) if data.get('analyzed_at') else None,
+        )
+        db.session.add(incident)
+
+    # Process alerts
+    if 'alerts' in data:
+        # Remove existing alerts and add new ones
+        SiriusAlert.query.filter_by(incident_id=incident.id).delete()
+        for alert_data in data['alerts']:
+            alert = SiriusAlert(
+                incident_id=incident.id,
+                alertname=alert_data.get('alertname', 'Unknown'),
+                severity=alert_data.get('severity'),
+                status=alert_data.get('status', 'firing'),
+                instance=alert_data.get('instance'),
+                job=alert_data.get('job'),
+                description=alert_data.get('description'),
+                labels=alert_data.get('labels'),
+                annotations=alert_data.get('annotations'),
+                starts_at=parse_timestamp(alert_data.get('starts_at')) if alert_data.get('starts_at') else None,
+                ends_at=parse_timestamp(alert_data.get('ends_at')) if alert_data.get('ends_at') else None,
+                fingerprint=alert_data.get('fingerprint'),
+            )
+            db.session.add(alert)
+
+    # Process actions
+    if 'actions' in data:
+        # Remove existing actions and add new ones
+        SiriusAction.query.filter_by(incident_id=incident.id).delete()
+        for idx, action_data in enumerate(data['actions']):
+            action = SiriusAction(
+                incident_id=incident.id,
+                action_type=action_data.get('action_type', 'unknown'),
+                description=action_data.get('description'),
+                target_host=action_data.get('target_host'),
+                target_service=action_data.get('target_service'),
+                command=action_data.get('command'),
+                risk_level=action_data.get('risk_level', 'medium'),
+                status=action_data.get('status', 'pending'),
+                order_index=idx,
+            )
+            db.session.add(action)
+
+    # Process investigation steps
+    if 'investigation_steps' in data:
+        # Remove existing steps and add new ones
+        SiriusInvestigationStep.query.filter_by(incident_id=incident.id).delete()
+        for step_data in data['investigation_steps']:
+            step = SiriusInvestigationStep(
+                incident_id=incident.id,
+                agent=step_data.get('agent'),
+                action=step_data.get('action'),
+                target=step_data.get('target'),
+                result=step_data.get('result'),
+                timestamp=parse_timestamp(step_data.get('timestamp')) if step_data.get('timestamp') else datetime.utcnow(),
+            )
+            db.session.add(step)
+
+    db.session.commit()
+
+    # Audit log
+    audit = AuditLog(
+        action='SIRIUS_INCIDENT',
+        source_ip=request.remote_addr,
+        details=f"Incident {incident.id}: {incident.title} ({incident.status})"
+    )
+    db.session.add(audit)
+    db.session.commit()
+
+    return jsonify({'status': 'ok', 'incident_id': incident.id}), 200
+
+
+@api_bp.route('/sirius/approval/<incident_id>')
+@require_api_key
+def sirius_check_approval(incident_id):
+    """Check approval status for an incident (polled by Sirius)"""
+    incident = SiriusIncident.query.get(incident_id)
+
+    if not incident:
+        return jsonify({'error': 'Incident not found'}), 404
+
+    status = 'pending'
+    if incident.status == 'approved':
+        status = 'approved'
+    elif incident.status == 'rejected':
+        status = 'rejected'
+    elif incident.status in ['awaiting_approval', 'analyzing', 'pending']:
+        status = 'pending'
+    else:
+        status = incident.status
+
+    return jsonify({
+        'status': status,
+        'approved_by': incident.approved_by,
+        'approved_at': incident.approved_at.isoformat() if incident.approved_at else None,
+        'reason': incident.rejection_reason,
+    })
+
+
+@api_bp.route('/sirius/webhook/execution_result', methods=['POST'])
+@require_api_key
+def sirius_execution_result():
+    """Receive action execution results from Sirius"""
+    data = request.get_json()
+
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+
+    incident_id = data.get('incident_id')
+    action_id = data.get('action_id')
+
+    if not incident_id or action_id is None:
+        return jsonify({'error': 'Missing incident_id or action_id'}), 400
+
+    action = SiriusAction.query.filter_by(
+        incident_id=incident_id,
+        id=action_id
+    ).first()
+
+    if not action:
+        # Try to find by order_index if action_id doesn't match
+        action = SiriusAction.query.filter_by(
+            incident_id=incident_id,
+            order_index=action_id
+        ).first()
+
+    if not action:
+        return jsonify({'error': 'Action not found'}), 404
+
+    action.status = 'executed' if data.get('status') == 'success' else 'failed'
+    action.execution_output = data.get('output', '')
+    action.executed_at = datetime.utcnow()
+
+    # Update incident status if all actions are done
+    incident = SiriusIncident.query.get(incident_id)
+    if incident:
+        all_done = all(
+            a.status in ['executed', 'failed', 'rejected']
+            for a in incident.actions.all()
+        )
+        if all_done:
+            all_success = all(
+                a.status == 'executed'
+                for a in incident.actions.all()
+            )
+            if all_success:
+                incident.status = 'resolved'
+                incident.resolved_at = datetime.utcnow()
+
+    db.session.commit()
+
+    return jsonify({'status': 'ok'}), 200
+
+
+@api_bp.route('/sirius/stats')
+def sirius_stats():
+    """Get Sirius statistics for dashboard"""
+    now = datetime.utcnow()
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    total_incidents = SiriusIncident.query.count()
+    pending_approvals = SiriusIncident.query.filter(
+        SiriusIncident.status.in_(['awaiting_approval'])
+    ).count()
+    resolved_today = SiriusIncident.query.filter(
+        SiriusIncident.resolved_at >= today_start
+    ).count()
+
+    # Calculate average MTTR for resolved incidents today
+    resolved_incidents = SiriusIncident.query.filter(
+        SiriusIncident.resolved_at >= today_start,
+        SiriusIncident.resolved_at.isnot(None),
+        SiriusIncident.detected_at.isnot(None)
+    ).all()
+
+    if resolved_incidents:
+        total_mttr = sum(
+            (i.resolved_at - i.detected_at).total_seconds()
+            for i in resolved_incidents
+        )
+        avg_mttr = int(total_mttr / len(resolved_incidents))
+    else:
+        avg_mttr = 0
+
+    # Incidents by severity
+    severity_counts = db.session.query(
+        SiriusIncident.severity,
+        db.func.count(SiriusIncident.id)
+    ).group_by(SiriusIncident.severity).all()
+
+    # Incidents by status
+    status_counts = db.session.query(
+        SiriusIncident.status,
+        db.func.count(SiriusIncident.id)
+    ).group_by(SiriusIncident.status).all()
+
+    return jsonify({
+        'total_incidents': total_incidents,
+        'pending_approvals': pending_approvals,
+        'resolved_today': resolved_today,
+        'avg_mttr_seconds': avg_mttr,
+        'by_severity': dict(severity_counts),
+        'by_status': dict(status_counts),
+    })
+
+
+@api_bp.route('/sirius/incidents')
+def sirius_list_incidents():
+    """List Sirius incidents with filtering and pagination"""
+    # Query parameters
+    status = sanitize_string(request.args.get('status'), 20)
+    severity = sanitize_string(request.args.get('severity'), 20)
+    server = sanitize_string(request.args.get('server'), 255)
+    service = sanitize_string(request.args.get('service'), 100)
+    search = sanitize_string(request.args.get('search'), 100)
+    limit = get_int_param('limit', 50, 1, 500)
+    offset = get_int_param('offset', 0, 0, 100000)
+
+    query = SiriusIncident.query
+
+    if status:
+        query = query.filter(SiriusIncident.status == status)
+
+    if severity:
+        query = query.filter(SiriusIncident.severity == severity)
+
+    if server:
+        # Filter by affected server (JSON array contains)
+        query = query.filter(
+            SiriusIncident.affected_servers.contains([server])
+        )
+
+    if service:
+        # Filter by affected service (JSON array contains)
+        query = query.filter(
+            SiriusIncident.affected_services.contains([service])
+        )
+
+    if search:
+        query = query.filter(
+            db.or_(
+                SiriusIncident.title.ilike(f'%{search}%'),
+                SiriusIncident.root_cause.ilike(f'%{search}%'),
+                SiriusIncident.id.ilike(f'%{search}%')
+            )
+        )
+
+    total = query.count()
+    incidents = query.order_by(SiriusIncident.detected_at.desc()).offset(offset).limit(limit).all()
+
+    return jsonify({
+        'total': total,
+        'incidents': [i.to_dict() for i in incidents]
+    })
+
+
+@api_bp.route('/sirius/incidents/pending')
+def sirius_pending_incidents():
+    """Get all incidents awaiting approval"""
+    incidents = SiriusIncident.query.filter(
+        SiriusIncident.status == 'awaiting_approval'
+    ).order_by(SiriusIncident.detected_at.desc()).all()
+
+    return jsonify([i.to_dict(include_details=True) for i in incidents])
+
+
+@api_bp.route('/sirius/incidents/<incident_id>')
+def sirius_get_incident(incident_id):
+    """Get a specific incident with full details"""
+    incident = SiriusIncident.query.get(incident_id)
+
+    if not incident:
+        return jsonify({'error': 'Incident not found'}), 404
+
+    return jsonify(incident.to_dict(include_details=True))
+
+
+@api_bp.route('/sirius/incidents/<incident_id>/approve', methods=['POST'])
+@require_dashboard_auth
+def sirius_approve_incident(incident_id):
+    """Approve incident remediation actions"""
+    incident = SiriusIncident.query.get(incident_id)
+
+    if not incident:
+        return jsonify({'error': 'Incident not found'}), 404
+
+    if incident.status != 'awaiting_approval':
+        return jsonify({'error': f'Incident is not awaiting approval (current status: {incident.status})'}), 400
+
+    user = get_current_user()
+    username = user.username if user else 'unknown'
+
+    incident.status = 'approved'
+    incident.approved_by = username
+    incident.approved_at = datetime.utcnow()
+
+    # Update all pending actions to approved
+    for action in incident.actions.filter_by(status='pending').all():
+        action.status = 'approved'
+
+    db.session.commit()
+
+    # Audit log
+    audit = AuditLog(
+        action='SIRIUS_APPROVE',
+        source_ip=request.remote_addr,
+        details=f"Incident {incident.id} approved by {username}"
+    )
+    db.session.add(audit)
+    db.session.commit()
+
+    return jsonify({'status': 'ok', 'approved_by': username})
+
+
+@api_bp.route('/sirius/incidents/<incident_id>/reject', methods=['POST'])
+@require_dashboard_auth
+def sirius_reject_incident(incident_id):
+    """Reject incident remediation actions"""
+    incident = SiriusIncident.query.get(incident_id)
+
+    if not incident:
+        return jsonify({'error': 'Incident not found'}), 404
+
+    if incident.status != 'awaiting_approval':
+        return jsonify({'error': f'Incident is not awaiting approval (current status: {incident.status})'}), 400
+
+    data = request.get_json() or {}
+    reason = data.get('reason', '')
+
+    user = get_current_user()
+    username = user.username if user else 'unknown'
+
+    incident.status = 'rejected'
+    incident.approved_by = username
+    incident.approved_at = datetime.utcnow()
+    incident.rejection_reason = reason
+
+    # Update all pending actions to rejected
+    for action in incident.actions.filter_by(status='pending').all():
+        action.status = 'rejected'
+
+    db.session.commit()
+
+    # Audit log
+    audit = AuditLog(
+        action='SIRIUS_REJECT',
+        source_ip=request.remote_addr,
+        details=f"Incident {incident.id} rejected by {username}: {reason}"
+    )
+    db.session.add(audit)
+    db.session.commit()
+
+    return jsonify({'status': 'ok', 'rejected_by': username})

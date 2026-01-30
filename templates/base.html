@@ -44,6 +44,11 @@
                             <i class="bi bi-bell"></i> Alerts
                         </a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.path == '/sirius' %}active{% endif %}" href="/sirius">
+                            <i class="bi bi-robot"></i> Sirius AI
+                        </a>
+                    </li>
                     {% if session.role == 'admin' %}
                     <li class="nav-item">
                         <a class="nav-link {% if request.path == '/users' %}active{% endif %}" href="/users">

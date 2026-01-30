@@ -267,3 +267,181 @@ class VPNSession(db.Model):
         elif bytes_val >= 1024:
             return f"{bytes_val / 1024:.2f} KB"
         return f"{bytes_val} B"
+
+
+# =============================================================================
+# Sirius AI DevOps Agent Models
+# =============================================================================
+
+class SiriusIncident(db.Model):
+    """Represents an incident analyzed by Sirius AI agent"""
+    __tablename__ = 'sirius_incidents'
+
+    id = db.Column(db.String(36), primary_key=True)  # UUID from Sirius
+    title = db.Column(db.String(255), nullable=False)
+    severity = db.Column(db.String(20), nullable=False)  # critical, high, medium, low, info
+    status = db.Column(db.String(20), nullable=False, default='pending')
+    # Status values: pending, analyzing, awaiting_approval, approved, rejected, executing, resolved
+
+    # Analysis results
+    root_cause = db.Column(db.Text)
+    root_cause_confidence = db.Column(db.Float)
+
+    # Affected resources (stored as JSON arrays)
+    affected_servers = db.Column(db.JSON)
+    affected_services = db.Column(db.JSON)
+
+    # Timestamps
+    detected_at = db.Column(db.DateTime, nullable=False)
+    analyzed_at = db.Column(db.DateTime)
+    resolved_at = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Approval tracking
+    approved_by = db.Column(db.String(100))
+    approved_at = db.Column(db.DateTime)
+    rejection_reason = db.Column(db.Text)
+
+    # Relationships
+    alerts = db.relationship('SiriusAlert', backref='incident', lazy='dynamic', cascade='all, delete-orphan')
+    actions = db.relationship('SiriusAction', backref='incident', lazy='dynamic', cascade='all, delete-orphan')
+    investigation_steps = db.relationship('SiriusInvestigationStep', backref='incident', lazy='dynamic', cascade='all, delete-orphan')
+
+    __table_args__ = (
+        db.Index('idx_sirius_incident_status', 'status'),
+        db.Index('idx_sirius_incident_severity', 'severity'),
+        db.Index('idx_sirius_incident_detected', 'detected_at'),
+    )
+
+    def to_dict(self, include_details=False):
+        result = {
+            'id': self.id,
+            'title': self.title,
+            'severity': self.severity,
+            'status': self.status,
+            'root_cause': self.root_cause,
+            'root_cause_confidence': self.root_cause_confidence,
+            'affected_servers': self.affected_servers or [],
+            'affected_services': self.affected_services or [],
+            'detected_at': self.detected_at.isoformat() if self.detected_at else None,
+            'analyzed_at': self.analyzed_at.isoformat() if self.analyzed_at else None,
+            'resolved_at': self.resolved_at.isoformat() if self.resolved_at else None,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'approved_by': self.approved_by,
+            'approved_at': self.approved_at.isoformat() if self.approved_at else None,
+            'rejection_reason': self.rejection_reason,
+            'alert_count': self.alerts.count(),
+            'action_count': self.actions.count(),
+        }
+
+        if include_details:
+            result['alerts'] = [a.to_dict() for a in self.alerts.all()]
+            result['actions'] = [a.to_dict() for a in self.actions.order_by(SiriusAction.order_index).all()]
+            result['investigation_steps'] = [s.to_dict() for s in self.investigation_steps.order_by(SiriusInvestigationStep.timestamp).all()]
+
+        return result
+
+
+class SiriusAlert(db.Model):
+    """Individual alerts that make up an incident"""
+    __tablename__ = 'sirius_alerts'
+
+    id = db.Column(db.Integer, primary_key=True)
+    incident_id = db.Column(db.String(36), db.ForeignKey('sirius_incidents.id'), nullable=False)
+
+    alertname = db.Column(db.String(255), nullable=False)
+    severity = db.Column(db.String(20))
+    status = db.Column(db.String(20), default='firing')  # firing, resolved
+
+    instance = db.Column(db.String(255))
+    job = db.Column(db.String(100))
+    description = db.Column(db.Text)
+
+    labels = db.Column(db.JSON)
+    annotations = db.Column(db.JSON)
+
+    starts_at = db.Column(db.DateTime)
+    ends_at = db.Column(db.DateTime)
+    fingerprint = db.Column(db.String(100))
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'alertname': self.alertname,
+            'severity': self.severity,
+            'status': self.status,
+            'instance': self.instance,
+            'job': self.job,
+            'description': self.description,
+            'labels': self.labels or {},
+            'annotations': self.annotations or {},
+            'starts_at': self.starts_at.isoformat() if self.starts_at else None,
+            'ends_at': self.ends_at.isoformat() if self.ends_at else None,
+            'fingerprint': self.fingerprint,
+        }
+
+
+class SiriusAction(db.Model):
+    """Remediation actions recommended by Sirius"""
+    __tablename__ = 'sirius_actions'
+
+    id = db.Column(db.Integer, primary_key=True)
+    incident_id = db.Column(db.String(36), db.ForeignKey('sirius_incidents.id'), nullable=False)
+
+    action_type = db.Column(db.String(50), nullable=False)
+    description = db.Column(db.Text)
+    target_host = db.Column(db.String(255))
+    target_service = db.Column(db.String(100))
+    command = db.Column(db.Text)
+
+    risk_level = db.Column(db.String(20))  # low, medium, high, critical
+    status = db.Column(db.String(20), default='pending')  # pending, approved, rejected, executing, executed, failed
+
+    execution_output = db.Column(db.Text)
+    executed_at = db.Column(db.DateTime)
+
+    order_index = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'action_type': self.action_type,
+            'description': self.description,
+            'target_host': self.target_host,
+            'target_service': self.target_service,
+            'command': self.command,
+            'risk_level': self.risk_level,
+            'status': self.status,
+            'execution_output': self.execution_output,
+            'executed_at': self.executed_at.isoformat() if self.executed_at else None,
+            'order_index': self.order_index,
+        }
+
+
+class SiriusInvestigationStep(db.Model):
+    """Investigation steps performed during incident analysis"""
+    __tablename__ = 'sirius_investigation_steps'
+
+    id = db.Column(db.Integer, primary_key=True)
+    incident_id = db.Column(db.String(36), db.ForeignKey('sirius_incidents.id'), nullable=False)
+
+    agent = db.Column(db.String(50))  # triage, analysis, remediation
+    action = db.Column(db.String(100))
+    target = db.Column(db.String(255))
+    result = db.Column(db.Text)
+
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'agent': self.agent,
+            'action': self.action,
+            'target': self.target,
+            'result': self.result,
+            'timestamp': self.timestamp.isoformat() if self.timestamp else None,
+        }

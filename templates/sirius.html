@@ -1,0 +1,672 @@
+{% extends "base.html" %}
+
+{% block title %}Sirius AI - Asgard{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h2><i class="bi bi-robot"></i> Sirius AI DevOps Agent</h2>
+    </div>
+</div>
+
+<!-- Stats Cards -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card stat-card bg-primary text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-subtitle mb-2">Total Incidents</h6>
+                        <h2 class="card-title mb-0" id="stat-total">--</h2>
+                    </div>
+                    <i class="bi bi-exclamation-triangle display-4 opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card bg-warning text-dark">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-subtitle mb-2">Pending Approvals</h6>
+                        <h2 class="card-title mb-0" id="stat-pending">--</h2>
+                    </div>
+                    <i class="bi bi-hourglass-split display-4 opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card bg-success text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-subtitle mb-2">Resolved Today</h6>
+                        <h2 class="card-title mb-0" id="stat-resolved">--</h2>
+                    </div>
+                    <i class="bi bi-check-circle display-4 opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card bg-info text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-subtitle mb-2">Avg MTTR</h6>
+                        <h2 class="card-title mb-0" id="stat-mttr">--</h2>
+                    </div>
+                    <i class="bi bi-clock-history display-4 opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Pending Approvals Section -->
+<div class="row mb-4" id="pending-section" style="display: none;">
+    <div class="col-12">
+        <div class="card border-warning">
+            <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-exclamation-triangle"></i> <strong>Pending Approvals</strong></span>
+                <span class="badge bg-dark" id="pending-count">0</span>
+            </div>
+            <div class="card-body" id="pending-list">
+                <!-- Pending incidents will be loaded here -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body py-2">
+                <div class="row g-2 align-items-center">
+                    <div class="col-md-2">
+                        <select class="form-select form-select-sm" id="filter-status">
+                            <option value="">All Statuses</option>
+                            <option value="pending">Pending</option>
+                            <option value="analyzing">Analyzing</option>
+                            <option value="awaiting_approval">Awaiting Approval</option>
+                            <option value="approved">Approved</option>
+                            <option value="rejected">Rejected</option>
+                            <option value="executing">Executing</option>
+                            <option value="resolved">Resolved</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <select class="form-select form-select-sm" id="filter-severity">
+                            <option value="">All Severities</option>
+                            <option value="critical">Critical</option>
+                            <option value="high">High</option>
+                            <option value="medium">Medium</option>
+                            <option value="low">Low</option>
+                            <option value="info">Info</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <input type="text" class="form-control form-control-sm" id="filter-search" placeholder="Search incidents...">
+                    </div>
+                    <div class="col-md-2">
+                        <button class="btn btn-sm btn-outline-primary w-100" onclick="loadIncidents()">
+                            <i class="bi bi-search"></i> Search
+                        </button>
+                    </div>
+                    <div class="col-md-3 text-end">
+                        <small class="text-muted">
+                            Showing <span id="showing-count">0</span> of <span id="total-count">0</span> incidents
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Incidents Table -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-list-task"></i> Incidents
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover" id="incidents-table">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Severity</th>
+                                <th>Title</th>
+                                <th>Servers</th>
+                                <th>Status</th>
+                                <th>Confidence</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="incidents-tbody">
+                            <tr><td colspan="7" class="text-center text-muted">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination -->
+                <nav aria-label="Incidents pagination">
+                    <ul class="pagination justify-content-center mb-0" id="pagination">
+                    </ul>
+                </nav>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Incident Detail Modal -->
+<div class="modal fade" id="incidentModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modal-title">Incident Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Tabs -->
+                <ul class="nav nav-tabs mb-3" id="incidentTabs" role="tablist">
+                    <li class="nav-item">
+                        <button class="nav-link active" id="overview-tab" data-bs-toggle="tab" data-bs-target="#overview" type="button">
+                            <i class="bi bi-info-circle"></i> Overview
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" id="investigation-tab" data-bs-toggle="tab" data-bs-target="#investigation" type="button">
+                            <i class="bi bi-search"></i> Investigation
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" id="actions-tab" data-bs-toggle="tab" data-bs-target="#actions" type="button">
+                            <i class="bi bi-lightning"></i> Actions
+                        </button>
+                    </li>
+                </ul>
+
+                <div class="tab-content" id="incidentTabContent">
+                    <!-- Overview Tab -->
+                    <div class="tab-pane fade show active" id="overview" role="tabpanel">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <p><strong>Incident ID:</strong> <code id="detail-id"></code></p>
+                                <p><strong>Severity:</strong> <span id="detail-severity"></span></p>
+                                <p><strong>Status:</strong> <span id="detail-status"></span></p>
+                                <p><strong>Detected:</strong> <span id="detail-detected"></span></p>
+                            </div>
+                            <div class="col-md-6">
+                                <p><strong>Affected Servers:</strong> <span id="detail-servers"></span></p>
+                                <p><strong>Affected Services:</strong> <span id="detail-services"></span></p>
+                                <p><strong>Confidence:</strong> <span id="detail-confidence"></span></p>
+                            </div>
+                        </div>
+                        <hr>
+                        <h6><i class="bi bi-bug"></i> Root Cause Analysis</h6>
+                        <div class="alert alert-secondary" id="detail-root-cause">
+                            No root cause analysis available.
+                        </div>
+                    </div>
+
+                    <!-- Investigation Tab -->
+                    <div class="tab-pane fade" id="investigation" role="tabpanel">
+                        <div id="investigation-steps" style="max-height: 400px; overflow-y: auto;">
+                            <p class="text-muted">No investigation steps available.</p>
+                        </div>
+                    </div>
+
+                    <!-- Actions Tab -->
+                    <div class="tab-pane fade" id="actions" role="tabpanel">
+                        <div id="remediation-actions">
+                            <p class="text-muted">No remediation actions available.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer" id="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Rejection Reason Modal -->
+<div class="modal fade" id="rejectModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">Reject Incident</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Reason for rejection:</label>
+                    <textarea class="form-control" id="reject-reason" rows="3" placeholder="Enter reason..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" onclick="confirmReject()">
+                    <i class="bi bi-x-circle"></i> Reject
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentPage = 0;
+const pageSize = 20;
+let currentIncidentId = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadStats();
+    loadPendingApprovals();
+    loadIncidents();
+
+    // Auto-refresh every 30 seconds
+    setInterval(() => {
+        loadStats();
+        loadPendingApprovals();
+    }, 30000);
+
+    // Search on enter
+    document.getElementById('filter-search').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') loadIncidents();
+    });
+});
+
+async function loadStats() {
+    try {
+        const stats = await fetch('/api/v1/sirius/stats').then(r => r.json());
+        document.getElementById('stat-total').textContent = stats.total_incidents;
+        document.getElementById('stat-pending').textContent = stats.pending_approvals;
+        document.getElementById('stat-resolved').textContent = stats.resolved_today;
+        document.getElementById('stat-mttr').textContent = formatMTTR(stats.avg_mttr_seconds);
+
+        // Update timestamp
+        document.querySelector('#last-updated span').textContent = new Date().toLocaleTimeString();
+    } catch (err) {
+        console.error('Failed to load stats:', err);
+    }
+}
+
+async function loadPendingApprovals() {
+    try {
+        const pending = await fetch('/api/v1/sirius/incidents/pending').then(r => r.json());
+        const section = document.getElementById('pending-section');
+        const list = document.getElementById('pending-list');
+        const count = document.getElementById('pending-count');
+
+        count.textContent = pending.length;
+
+        if (pending.length > 0) {
+            section.style.display = 'block';
+            list.innerHTML = pending.map(i => `
+                <div class="card mb-2 border-${getSeverityColor(i.severity)}">
+                    <div class="card-body py-2">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <span class="badge bg-${getSeverityColor(i.severity)} me-2">${i.severity.toUpperCase()}</span>
+                                <strong>${escapeHtml(i.title)}</strong>
+                                <small class="text-muted ms-2">${formatDate(i.detected_at)}</small>
+                            </div>
+                            <div>
+                                <button class="btn btn-sm btn-success me-1" onclick="approveIncident('${i.id}')">
+                                    <i class="bi bi-check-lg"></i> Approve
+                                </button>
+                                <button class="btn btn-sm btn-danger me-1" onclick="showRejectModal('${i.id}')">
+                                    <i class="bi bi-x-lg"></i> Reject
+                                </button>
+                                <button class="btn btn-sm btn-outline-primary" onclick="viewIncident('${i.id}')">
+                                    <i class="bi bi-eye"></i> View
+                                </button>
+                            </div>
+                        </div>
+                        <div class="mt-2">
+                            <small class="text-muted">
+                                <strong>Root Cause:</strong> ${escapeHtml(i.root_cause || 'Not determined')}
+                                <span class="ms-2">(${Math.round((i.root_cause_confidence || 0) * 100)}% confidence)</span>
+                            </small>
+                        </div>
+                        <div class="mt-1">
+                            <small class="text-muted">
+                                <strong>Actions:</strong> ${i.action_count} actions pending
+                                | <strong>Servers:</strong> ${(i.affected_servers || []).join(', ') || 'Unknown'}
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        } else {
+            section.style.display = 'none';
+        }
+    } catch (err) {
+        console.error('Failed to load pending approvals:', err);
+    }
+}
+
+async function loadIncidents() {
+    try {
+        const status = document.getElementById('filter-status').value;
+        const severity = document.getElementById('filter-severity').value;
+        const search = document.getElementById('filter-search').value;
+
+        const params = new URLSearchParams({
+            limit: pageSize,
+            offset: currentPage * pageSize
+        });
+
+        if (status) params.append('status', status);
+        if (severity) params.append('severity', severity);
+        if (search) params.append('search', search);
+
+        const data = await fetch(`/api/v1/sirius/incidents?${params}`).then(r => r.json());
+
+        document.getElementById('showing-count').textContent = data.incidents.length;
+        document.getElementById('total-count').textContent = data.total;
+
+        const tbody = document.getElementById('incidents-tbody');
+        if (data.incidents.length > 0) {
+            tbody.innerHTML = data.incidents.map(i => `
+                <tr>
+                    <td>${formatDate(i.detected_at)}</td>
+                    <td><span class="badge bg-${getSeverityColor(i.severity)}">${i.severity.toUpperCase()}</span></td>
+                    <td>
+                        <a href="#" onclick="viewIncident('${i.id}'); return false;">${escapeHtml(i.title)}</a>
+                    </td>
+                    <td><code>${(i.affected_servers || []).join(', ') || '-'}</code></td>
+                    <td><span class="badge bg-${getStatusColor(i.status)}">${i.status}</span></td>
+                    <td>${i.root_cause_confidence ? Math.round(i.root_cause_confidence * 100) + '%' : '-'}</td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-primary" onclick="viewIncident('${i.id}')">
+                            <i class="bi bi-eye"></i>
+                        </button>
+                        ${i.status === 'awaiting_approval' ? `
+                            <button class="btn btn-sm btn-success" onclick="approveIncident('${i.id}')">
+                                <i class="bi bi-check-lg"></i>
+                            </button>
+                            <button class="btn btn-sm btn-danger" onclick="showRejectModal('${i.id}')">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                        ` : ''}
+                    </td>
+                </tr>
+            `).join('');
+        } else {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No incidents found</td></tr>';
+        }
+
+        // Update pagination
+        updatePagination(data.total);
+    } catch (err) {
+        console.error('Failed to load incidents:', err);
+    }
+}
+
+function updatePagination(total) {
+    const totalPages = Math.ceil(total / pageSize);
+    const pagination = document.getElementById('pagination');
+
+    if (totalPages <= 1) {
+        pagination.innerHTML = '';
+        return;
+    }
+
+    let html = `
+        <li class="page-item ${currentPage === 0 ? 'disabled' : ''}">
+            <a class="page-link" href="#" onclick="goToPage(${currentPage - 1}); return false;">Previous</a>
+        </li>
+    `;
+
+    for (let i = 0; i < Math.min(totalPages, 5); i++) {
+        const page = currentPage < 3 ? i : currentPage - 2 + i;
+        if (page >= totalPages) break;
+        html += `
+            <li class="page-item ${page === currentPage ? 'active' : ''}">
+                <a class="page-link" href="#" onclick="goToPage(${page}); return false;">${page + 1}</a>
+            </li>
+        `;
+    }
+
+    html += `
+        <li class="page-item ${currentPage >= totalPages - 1 ? 'disabled' : ''}">
+            <a class="page-link" href="#" onclick="goToPage(${currentPage + 1}); return false;">Next</a>
+        </li>
+    `;
+
+    pagination.innerHTML = html;
+}
+
+function goToPage(page) {
+    currentPage = Math.max(0, page);
+    loadIncidents();
+}
+
+async function viewIncident(incidentId) {
+    try {
+        const incident = await fetch(`/api/v1/sirius/incidents/${incidentId}`).then(r => r.json());
+        currentIncidentId = incidentId;
+
+        // Populate overview tab
+        document.getElementById('modal-title').textContent = incident.title;
+        document.getElementById('detail-id').textContent = incident.id;
+        document.getElementById('detail-severity').innerHTML = `<span class="badge bg-${getSeverityColor(incident.severity)}">${incident.severity.toUpperCase()}</span>`;
+        document.getElementById('detail-status').innerHTML = `<span class="badge bg-${getStatusColor(incident.status)}">${incident.status}</span>`;
+        document.getElementById('detail-detected').textContent = formatDate(incident.detected_at);
+        document.getElementById('detail-servers').textContent = (incident.affected_servers || []).join(', ') || 'Unknown';
+        document.getElementById('detail-services').textContent = (incident.affected_services || []).join(', ') || 'Unknown';
+        document.getElementById('detail-confidence').textContent = incident.root_cause_confidence ?
+            `${Math.round(incident.root_cause_confidence * 100)}%` : 'N/A';
+        document.getElementById('detail-root-cause').textContent = incident.root_cause || 'No root cause analysis available.';
+
+        // Populate investigation tab
+        const stepsDiv = document.getElementById('investigation-steps');
+        if (incident.investigation_steps && incident.investigation_steps.length > 0) {
+            stepsDiv.innerHTML = incident.investigation_steps.map((s, idx) => `
+                <div class="card mb-2">
+                    <div class="card-header py-1 bg-light">
+                        <small>
+                            <span class="badge bg-secondary">${s.agent || 'unknown'}</span>
+                            <strong>${escapeHtml(s.action || '')}</strong>
+                            <span class="text-muted ms-2">on ${escapeHtml(s.target || 'N/A')}</span>
+                            <span class="float-end text-muted">${formatDate(s.timestamp)}</span>
+                        </small>
+                    </div>
+                    <div class="card-body py-2">
+                        <pre class="mb-0" style="white-space: pre-wrap; font-size: 0.85em; max-height: 150px; overflow-y: auto;">${escapeHtml(s.result || 'No output')}</pre>
+                    </div>
+                </div>
+            `).join('');
+        } else {
+            stepsDiv.innerHTML = '<p class="text-muted">No investigation steps recorded.</p>';
+        }
+
+        // Populate actions tab
+        const actionsDiv = document.getElementById('remediation-actions');
+        if (incident.actions && incident.actions.length > 0) {
+            actionsDiv.innerHTML = incident.actions.map((a, idx) => `
+                <div class="card mb-2 border-${getRiskColor(a.risk_level)}">
+                    <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                        <span>
+                            <span class="badge bg-${getRiskColor(a.risk_level)}">${a.risk_level.toUpperCase()}</span>
+                            <strong>${idx + 1}. ${escapeHtml(a.action_type)}</strong>
+                        </span>
+                        <span class="badge bg-${getStatusColor(a.status)}">${a.status}</span>
+                    </div>
+                    <div class="card-body py-2">
+                        <p class="mb-1"><small>${escapeHtml(a.description || '')}</small></p>
+                        <p class="mb-1"><small><strong>Target:</strong> ${escapeHtml(a.target_host || 'N/A')} / ${escapeHtml(a.target_service || 'N/A')}</small></p>
+                        <code class="d-block p-2 bg-dark text-light" style="font-size: 0.85em;">${escapeHtml(a.command || 'No command')}</code>
+                        ${a.execution_output ? `
+                            <div class="mt-2">
+                                <small><strong>Output:</strong></small>
+                                <pre class="mb-0 p-2 bg-light" style="font-size: 0.8em; max-height: 100px; overflow-y: auto;">${escapeHtml(a.execution_output)}</pre>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `).join('');
+        } else {
+            actionsDiv.innerHTML = '<p class="text-muted">No remediation actions recommended.</p>';
+        }
+
+        // Update footer buttons
+        const footer = document.getElementById('modal-footer');
+        if (incident.status === 'awaiting_approval') {
+            footer.innerHTML = `
+                <button type="button" class="btn btn-danger" onclick="showRejectModal('${incident.id}')">
+                    <i class="bi bi-x-circle"></i> Reject
+                </button>
+                <button type="button" class="btn btn-success" onclick="approveIncident('${incident.id}')">
+                    <i class="bi bi-check-circle"></i> Approve
+                </button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            `;
+        } else {
+            footer.innerHTML = `<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>`;
+        }
+
+        // Show modal
+        const modal = new bootstrap.Modal(document.getElementById('incidentModal'));
+        modal.show();
+    } catch (err) {
+        console.error('Failed to load incident:', err);
+        showToast('Failed to load incident details', 'danger');
+    }
+}
+
+async function approveIncident(incidentId) {
+    if (!confirm('Are you sure you want to approve this incident for remediation?')) return;
+
+    try {
+        const response = await fetch(`/api/v1/sirius/incidents/${incidentId}/approve`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            showToast(`Incident approved by ${data.approved_by}`, 'success');
+
+            // Close any open modals
+            const modal = bootstrap.Modal.getInstance(document.getElementById('incidentModal'));
+            if (modal) modal.hide();
+
+            // Reload data
+            loadPendingApprovals();
+            loadIncidents();
+            loadStats();
+        } else {
+            showToast(data.error || 'Failed to approve incident', 'danger');
+        }
+    } catch (err) {
+        console.error('Failed to approve incident:', err);
+        showToast('Failed to approve incident', 'danger');
+    }
+}
+
+function showRejectModal(incidentId) {
+    currentIncidentId = incidentId;
+    document.getElementById('reject-reason').value = '';
+    const modal = new bootstrap.Modal(document.getElementById('rejectModal'));
+    modal.show();
+}
+
+async function confirmReject() {
+    const reason = document.getElementById('reject-reason').value;
+
+    try {
+        const response = await fetch(`/api/v1/sirius/incidents/${currentIncidentId}/reject`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reason })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            showToast('Incident rejected', 'warning');
+
+            // Close modals
+            const rejectModal = bootstrap.Modal.getInstance(document.getElementById('rejectModal'));
+            if (rejectModal) rejectModal.hide();
+
+            const incidentModal = bootstrap.Modal.getInstance(document.getElementById('incidentModal'));
+            if (incidentModal) incidentModal.hide();
+
+            // Reload data
+            loadPendingApprovals();
+            loadIncidents();
+            loadStats();
+        } else {
+            showToast(data.error || 'Failed to reject incident', 'danger');
+        }
+    } catch (err) {
+        console.error('Failed to reject incident:', err);
+        showToast('Failed to reject incident', 'danger');
+    }
+}
+
+// Helper functions
+function getSeverityColor(severity) {
+    const colors = {
+        critical: 'danger',
+        high: 'warning',
+        medium: 'info',
+        low: 'secondary',
+        info: 'light'
+    };
+    return colors[severity] || 'secondary';
+}
+
+function getStatusColor(status) {
+    const colors = {
+        pending: 'secondary',
+        analyzing: 'info',
+        awaiting_approval: 'warning',
+        approved: 'primary',
+        rejected: 'danger',
+        executing: 'info',
+        resolved: 'success',
+        executed: 'success',
+        failed: 'danger'
+    };
+    return colors[status] || 'secondary';
+}
+
+function getRiskColor(risk) {
+    const colors = {
+        low: 'success',
+        medium: 'warning',
+        high: 'danger',
+        critical: 'danger'
+    };
+    return colors[risk] || 'secondary';
+}
+
+function formatMTTR(seconds) {
+    if (!seconds || seconds === 0) return '-';
+    if (seconds < 60) return `${seconds}s`;
+    if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
+    return `${Math.round(seconds / 3600)}h ${Math.round((seconds % 3600) / 60)}m`;
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+</script>
+{% endblock %}
